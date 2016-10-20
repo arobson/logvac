@@ -1,0 +1,48 @@
+{
+  "author": {
+    "name": "Alex Robson"
+  },
+  "bugs": {
+    "url": "https://github.com/arobson/logvac/issues"
+  },
+  "dependencies": {
+    "fount": "^0.2.0-3",
+    "lodash": "^4.16.4",
+    "modlo": "^1.1.2",
+    "snapstack": "^1.0.7",
+    "when": "^3.7.7"
+  },
+  "description": "A simple log aggregator purpose built for kubernetes",
+  "devDependencies": {
+    "chai": "^3.5.0",
+    "chai-as-promised": "^6.0.0",
+    "sinon": "^1.17.6",
+    "sinon-as-promised": "^4.0.2",
+    "sinon-chai": "^2.8.0"
+  },
+  "homepage": "https://github.com/arobson/logvac#readme",
+  "keywords": [
+    "log",
+    "aggregation"
+  ],
+  "license": "MIT",
+  "main": "src/index.js",
+  "maintainers": [
+    {
+      "name": "arobson",
+      "email": "asrobson@gmail.com"
+    }
+  ],
+  "name": "logvac",
+  "optionalDependencies": {},
+  "readme": "## logvac\nA simple log aggregator purpose built for kubernetes.\n\n> \"But FluentD\" - Everyone\n\nI was surprised that Fluent and its plugins are written with the core assumption that the daemon's context is the service's host. When it isn't, there's a serious penalty, all log entries get built up from the Docker Daemon *host* or, worse, \"localhost\". While I found the message body could be decorated, this does _not_ allow you to take advantage of categorization and grouping and increases the effort and cost of searching the logs. Why even bother aggregating?\n\nlogvac is built specifically for kubernetes which means it already knows about about kubelet's lovely symbolic link trick at `/var/log/containers` and exploits that so that the log stream it produces not only has that information available, but so that all transformers and transports have log entries from the context of the Docker Container that includes the larger context of the cluster as well.\n\n## Log Stream\nlogvac produces a log stream of JSON entries. This should be unsurprising given that:\n * that's the Docker logfile format\n * this is a Node project\n * decorating a message with metadata is easier this way\n\n### Metadata\nThese properties are added to the Docker message payload (which has the properties `log`, `stream` and `time`):\n\n * `namespace` - the namespace of the Pod that emitted the message\n * `service` - the friendly name of the Pod that emitted the message\n * `system` - the combined namespace + name of the Pod\n * `pod` - the unique id of the Pod (to differentiate from multiple instances)\n * `container` - 8 character slug of the container's sha\n * `daemon` - the docker daemon/VM host IP the message was collected from\n\n## Plugins\nlogvac's plugin system is simpler and supports message transforms and message transports.\n\nPlugins can be written either as NPM modules or included as modules in the project itself.\n\n### Transforms\nA transform is a JS module that takes a configuration block and exposes a `transform` function which takes a single log entry and makes a change to it. The entry, or a promise should be returned at the end of the function.\n\n```js\nfunction iDoTheThing( config, entry ) {\n  // something super important with the config and the entry\n  return entry;\n}\n\nmodule.exports = function myTransform( config ) {\n  return {\n    transform: iDoTheThing.bind( null, config )\n  };\n}\n```\n\n### Transports\nA transform is a JS module that takes a configuration block and exposes a `transfer` function. Both the module and the transfer function can return either a simple value or a promise to resolve. In the case of the transfer function, the promise's resolution is what tells logvac that the log entry can be considered successfully transfered so that it will not be retried again in the future.\n\nIf the transport is a valid event emitter, logvac will subscribe to `connected` and `disconnected` events. It will use this to halt and resume log parsing activities and avoid crashes due to OOMs.\n\nPlugging in transports that don't provide this facility and cannot reach the inended end-points will lead to logvac crashing and starting over.\n\n```js\nfunction upload( config, entry ) {\n  // something super important with the config and the entry\n  return entry;\n}\n\nfunction connect( config ) {\n  // connects to some aggregator based on config\n  return when();\n}\n\nmodule.exports = function myTransform( config ) {\n  return {\n    connect,\n    transfer.bind( null, config )\n  };\n}\n```\n\n## Configuration\nlogvac has several core configuration values that are unlikely to change from one installation to the next. Should you need to change them, simply provide a matching property when supplying the config block with a different value:\n\n```js\n{\n  transforms: [ \"./src/transforms/*.js\" ],\n  transports: [ \"./src/transports/*.js\" ],\n  containerLogs: \"/var/log/containers\",\n  logPath: \"/var/log/\",\n  positionFile: \"logvac.json\"\n}\n```\n\n * `namespace`\n * `service`\n * `system`\n * `container`\n * `daemon`\n\n## Use\nUsing logvac to create your own service is really simple. Here's a quick example:\n\n```bash\nnpm init\nnpm install logvac logvac-papertrail -S\n```\n\n### src/config.js\n```js\nrequire( \"dot-env\" );\n\nmodule.exports = {\n  \"transforms\": [ \"./src/transforms/*.js\" ]\n  \"transports\": [ \"logvac-papertrail\" ],\n  \"papertrail\": {\n    \"url\": process.env[ \"PAPERTRAIL_URL\" ],\n    \"port\": process.env[ \"PAPERTRAIL_PORT\" ],\n    \"level\": process.env[ \"LOG_LEVEL\" ],\n    \"interval\": process.env[ \"LOG_FREQUENCY\" ]\n  }\n};\n```\n\n### src/index.js\n```js\nrequire( \"logvac\" );\nconst config = require( \"./config\" );\n\nlogvac.init( config )\n  .then( ( service ) => {\n    return service.start();\n  } );\n```",
+  "readmeFilename": "README.md",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/arobson/logvac.git"
+  },
+  "scripts": {
+    "test": "mocha spec/**"
+  },
+  "version": "1.0.0"
+}
