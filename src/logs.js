@@ -52,8 +52,8 @@ function getNewReadStream( containerLogs, logFile, positions ) {
   } );
   return {
     stream: rs,
-    start: start,
-    charactersRead: start,
+    start: start || 0,
+    charactersRead: start || 0,
     file: logFile,
     fullPath: fullPath
   };
